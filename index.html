@@ -304,6 +304,26 @@ header{ background:rgba(255,255,255,.8); -webkit-backdrop-filter:blur(22px) satu
 .dirchips{ display:flex; gap:6px; flex-wrap:wrap; margin:10px 0 2px; }
 .dirchips .dirchip.on{ background:#111; color:#fff; border-color:#111; }
 </style>
+<style>
+/* ===== Linimasa kedatangan ===== */
+.arrtl{margin:4px 0 10px}
+.tl-head{display:flex;justify-content:space-between;align-items:baseline;font-size:12px;font-weight:700;color:#3a3f47;margin:2px 2px 6px}
+.tl-leg{font-weight:500;color:#8a8f98;font-size:11px;display:flex;align-items:center;gap:4px}
+.tl-dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:#007AFF;margin-left:6px}
+.tl-dot.stat{background:#fff;border:1.5px solid #8a8f98;width:6.5px;height:6.5px}
+.tl-inner{position:relative;height:56px;margin:0 26px;background-image:linear-gradient(90deg, rgba(20,24,32,.07) 1px, transparent 1px);background-size:calc(100%/4) 100%}
+.tl-inner::before{content:"";position:absolute;left:0;right:0;top:50%;height:2px;background:rgba(20,24,32,.16);border-radius:2px}
+.tl-now{position:absolute;left:-4px;top:calc(50% - 4px);width:8px;height:8px;border-radius:50%;background:#007AFF;box-shadow:0 0 0 3px rgba(0,122,255,.22);z-index:2}
+.tlpill{position:absolute;transform:translateX(-50%);min-width:30px;height:24px;padding:0 8px;border-radius:8px;border:1.5px solid transparent;font-family:inherit;font-size:12px;font-weight:800;line-height:1;cursor:pointer;z-index:1;box-shadow:0 1px 3px rgba(20,24,32,.18)}
+.tlpill.stat{box-shadow:none;border-style:dashed}
+.tlpill.far::after{content:" ›"}
+.tlpill.sel{outline:2px solid #14181f;outline-offset:1px}
+.tl-axis{display:flex;justify-content:space-between;margin:3px 26px 0;font-size:10px;color:#8a8f98}
+.tl-more{font-size:11px;color:#8a8f98;margin-top:5px;text-align:right}
+#side.dragging{transition:none !important}
+#sheetHandle{touch-action:none}
+.arrrow.flash{background:#FFF3CD !important}
+</style>
 </head>
 <body>
 <noscript><div style="background:#3a1420;color:#ffd7da;padding:12px;font-family:sans-serif">Halaman ini butuh JavaScript aktif. Aktifkan JavaScript di browser kamu, lalu muat ulang.</div></noscript>
@@ -1089,6 +1109,53 @@ function patternDestName(tid){
   const s = stopById.get(arr[arr.length - 1][0]);
   return s ? s[1] : "";
 }
+function renderTimeline(){
+  const box = document.getElementById("arrTimeline");
+  if (!box) return;
+  const MAXM = 20;
+  const all = (window.__tjArrTL || []).filter(x => isFinite(x.eta) && x.eta >= -1).sort((a, b) => a.eta - b.eta);
+  const data = all.filter(x => x.eta <= MAXM).slice(0, 16);
+  const over = all.length - data.length;
+  if (!data.length && !over){ box.innerHTML = ""; box.style.display = "none"; return; }
+  box.style.display = "";
+  let pills = "";
+  const Wpx = box.clientWidth || 340;
+  const pxMin = Math.max(60, Wpx - 52) / MAXM;
+  const laneEnd = [];
+  const laneOf = (x) => {
+    const estPx = Math.max(34, 18 + String(x.code).length * 7.2);
+    const half = (estPx / 2) / pxMin;
+    const s = x.eta - half, e = x.eta + half + 0.5;
+    let li = laneEnd.findIndex(end => end <= s);
+    if (li < 0){
+      if (laneEnd.length < 4){ laneEnd.push(e); li = laneEnd.length - 1; }
+      else { li = laneEnd.length - 1; laneEnd[li] = e; }
+    } else laneEnd[li] = e;
+    return li;
+  };
+  data.forEach((x, i) => {
+    const pct = Math.max(0, Math.min(100, x.eta / MAXM * 100));
+    const top = 2 + laneOf(x) * 28;
+    const title = x.live ? (x.code + " · live ±" + Math.round(x.eta) + " mnt lagi") : (x.code + " · jadwal statis ±" + Math.round(x.eta) + " mnt lagi");
+    const hideP = (arrDir && !dirMatch(x.dir || "", arrDir)) ? ";display:none" : "";
+    pills += '<button type="button" class="tlpill' + (x.live ? "" : " stat") + (x.eta > MAXM ? " far" : "") + '" data-dir="' + esc(x.dir || "") + '" data-body="' + esc(x.body || "") + '" style="left:' + pct.toFixed(1) + '%;top:' + top + 'px;background:' + (x.live ? x.color : "#fff") + ';color:' + (x.live ? x.txt : x.color) + ';border-color:' + x.color + hideP + '" title="' + esc(title) + '">' + esc(x.code) + '</button>';
+  });
+  const lanes = Math.max(1, laneEnd.length);
+  box.innerHTML = '<div class="tl-head"><span>Linimasa kedatangan</span><span class="tl-leg"><i class="tl-dot live"></i>Live<i class="tl-dot stat"></i>Jadwal statis</span></div>' +
+    (data.length ? '<div class="tl-inner" style="height:' + (lanes * 28 + 2) + 'px"><span class="tl-now"></span>' + pills + '</div>' +
+    '<div class="tl-axis"><span>Skrg</span><span>5</span><span>10</span><span>15</span><span>20 mnt</span></div>' : '') +
+    (over ? '<div class="tl-more">+' + over + ' bus lagi di luar 20 mnt — lihat daftar lengkap di bawah</div>' : '');
+  box.querySelectorAll(".tlpill").forEach(p => {
+    p.onclick = () => {
+      const body = p.getAttribute("data-body");
+      box.querySelectorAll(".tlpill").forEach(q => q.classList.remove("sel"));
+      p.classList.add("sel");
+      if (!body) return;
+      const rowEl = document.querySelector('#arrivals .arrrow[data-body="' + body + '"]');
+      if (rowEl){ try { rowEl.scrollIntoView({ block: "nearest", behavior: "smooth" }); } catch(e){} rowEl.classList.add("flash"); setTimeout(() => rowEl.classList.remove("flash"), 1600); }
+    };
+  });
+}
 function stopDirections(){
   const dirs = new Map();
   if (!selectedStop) return [];
@@ -1138,12 +1205,17 @@ function applyDirFilter(){
   box.querySelectorAll(".arrrow[data-dir]").forEach(r => {
     r.style.display = (!arrDir || dirMatch(r.getAttribute("data-dir"), arrDir)) ? "" : "none";
   });
+  const tlBox = document.getElementById("arrTimeline");
+  if (tlBox) tlBox.querySelectorAll(".tlpill[data-dir]").forEach(p => {
+    p.style.display = (!arrDir || dirMatch(p.getAttribute("data-dir"), arrDir)) ? "" : "none";
+  });
 }
 function appendStaticSection(){
   try {
     const box = document.getElementById("arrivals");
     if (!box || !selectedStop) return;
     box.querySelectorAll(".arrstat").forEach(n => n.remove());
+    window.__tjArrTL = (window.__tjArrTL || []).filter(x => x.live);
     const live = (window.__tjLastLive && window.__tjLastLive.stopId === selectedStop[0]) ? window.__tjLastLive.routes : [];
     const codes = Array.isArray(window.__tjStopRoutes) ? window.__tjStopRoutes : [];
     const rows = [];
@@ -1152,7 +1224,7 @@ function appendStaticSection(){
       const info = staticNextForRoute(rc, selectedStop, arrDir || null);
       if (info) rows.push({ rc, info });
     }
-    if (!rows.length) return;
+    if (!rows.length){ renderTimeline(); return; }
     const head = document.createElement("div");
     head.className = "arrstat arrstat-head";
     head.innerHTML = "🗓️ <b>Jadwal statis (GTFS)</b> — rute di bawah ini belum ada bus live yang terdeteksi menuju halte ini. Jamnya dihitung dari jadwal resmi berdasarkan <b>headway</b> (jarak waktu antarbus berurutan pada rute itu), bukan dari posisi GPS.";
@@ -1168,7 +1240,9 @@ function appendStaticSection(){
       row.innerHTML = '<span class="rbadge" style="background:' + hexColor(window.__tjStopRouteColors && window.__tjStopRouteColors[rc], "#5b6b7f") + ';color:#fff">' + esc(rc) + '</span>' +
         '<span class="rmain">' + esc(ROUTE_NAMES[rc] || rc) + '<small>Jadwal GTFS · belum ada bus live terdeteksi</small></span>' + right;
       box.appendChild(row);
+      if (info.times.length) (window.__tjArrTL = window.__tjArrTL || []).push({ code: rc, color: hexColor(window.__tjStopRouteColors && window.__tjStopRouteColors[rc], "#5b6b7f"), txt: "#fff", eta: info.times[0] - wibNowMin(), dir: arrDir || "", body: "", live: false });
     }
+    renderTimeline();
   } catch(e){}
 }
 async function fetchArrivals(){
@@ -1189,6 +1263,7 @@ async function fetchArrivals(){
     found.sort((a,b2) => a.eta - b2.eta || a.dist - b2.dist);
     const list = found.slice(0, 12);
     window.__tjLastLive = { stopId: selectedStop[0], routes: [...new Set(list.map(x => x.b.route_code))] };
+    window.__tjArrTL = list.map(x => ({ code: x.b.route_code, color: hexColor(x.b.route_color, "#00609C"), txt: hexColor(x.b.route_text_color, "#FFF"), eta: x.eta, dir: normDir(patternDestName(x.b.trip_id) || x.entry.headsign || x.b.trip_headsign || ""), body: x.b.bus_body_no, live: true }));
     const noLive = !list.length;
     if (noLive){
       box.innerHTML = '<div class="nores">Belum ada bus live yang sedang menuju halte ini dalam radius 5 km. Di bawah ini jadwal statis GTFS untuk rute yang melayani halte ini — papan diperbarui tiap ±30 detik.</div>';
@@ -1206,6 +1281,7 @@ async function fetchArrivals(){
       const wk = watchKey(selectedStop[0], b.route_code);
       const row = document.createElement("div");
       row.className = "arrrow";
+      row.setAttribute("data-body", b.bus_body_no);
       row.setAttribute("data-dir", normDir(patternDestName(b.trip_id) || entry.headsign || b.trip_headsign || ""));
       const etaTxt = eta <= 0 ? "Tiba" : "±" + eta + " mnt";
       row.innerHTML =
@@ -1272,6 +1348,13 @@ function selectStop(s){
     const ab = document.getElementById("arrivals");
     if (ab && ab.parentNode) ab.parentNode.insertBefore(dv, ab);
   }
+  if (!document.getElementById("arrTimeline")){
+    const tv = document.createElement("div");
+    tv.id = "arrTimeline"; tv.className = "arrtl"; tv.style.display = "none";
+    const ab2 = document.getElementById("arrivals");
+    if (ab2 && ab2.parentNode) ab2.parentNode.insertBefore(tv, ab2);
+  }
+  window.__tjArrTL = [];
   fetchStopDetail();
   fetchArrivals();
   if (arrivalsTimer) clearInterval(arrivalsTimer);
@@ -1312,14 +1395,33 @@ setTimeout(() => {
     function setExp(v){ side.classList.toggle('expanded', !!v); }
     var dragged=false;
     handle.addEventListener('click', function(){ if(dragged){ dragged=false; return; } setExp(!isExp()); });
-    var startY=null;
-    handle.addEventListener('pointerdown', function(e){ startY=e.clientY; });
-    window.addEventListener('pointerup', function(e){
-      if(startY===null) return;
-      var dy=startY-e.clientY; startY=null;
-      if(dy>48){ setExp(true); dragged=true; setTimeout(function(){dragged=false;},350); }
-      else if(dy<-48){ setExp(false); dragged=true; setTimeout(function(){dragged=false;},350); }
+    var drag=null;
+    handle.addEventListener('pointerdown', function(e){
+      drag={ y0:e.clientY, h0:side.getBoundingClientRect().height, h:0, moved:false };
+      try{ handle.setPointerCapture(e.pointerId); }catch(err){}
     });
+    handle.addEventListener('pointermove', function(e){
+      if(!drag) return;
+      var dy=drag.y0-e.clientY;
+      if(Math.abs(dy)>6) drag.moved=true;
+      if(!drag.moved) return;
+      var vh=window.innerHeight||800;
+      drag.h=Math.max(vh*0.16, Math.min(vh*0.92, drag.h0+dy));
+      side.classList.add('dragging');
+      side.style.height=drag.h+'px';
+    });
+    function endDrag(){
+      if(!drag) return;
+      var wasMoved=drag.moved, hEnd=drag.h; drag=null;
+      side.classList.remove('dragging');
+      side.style.height='';
+      if(!wasMoved) return;
+      dragged=true; setTimeout(function(){dragged=false;},350);
+      var vh=window.innerHeight||800;
+      setExp(hEnd > vh*0.61);
+    }
+    handle.addEventListener('pointerup', endDrag);
+    handle.addEventListener('pointercancel', endDrag);
     var sp=document.getElementById('stopPanel');
     if(sp && window.MutationObserver){
       new MutationObserver(function(){
